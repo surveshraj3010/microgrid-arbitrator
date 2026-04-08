@@ -1,0 +1,106 @@
+# OpenEnv Specification — Micro-Grid Energy Arbitrator V2
+# Team RauResh — IIT Mandi
+
+name: "microgrid-energy-arbitrator-v2"
+version: "2.0.0"
+description: >
+  A physics-grounded micro-grid energy management environment. 
+  V2 includes Thermal Derating (LFP battery chemistry) and Inverter Standby Loss (45W).
+  Models real-world EMS decision-making using IIT Mandi's solar PV context.
+
+author: "RauResh — IIT Mandi"
+license: "Apache-2.0"
+tags:
+  - energy-arbitrage
+  - sustainability
+  - iit-mandi
+  - physics-v2
+  - esp32-sensing
+
+observation_space:
+  type: dict
+  description: "Full observable state of the micro-grid at one hourly timestep"
+  fields:
+    episode_id:   {type: string}
+    task_id:      {type: string}
+    hour:         {type: int, range: [0, 23]}
+    step_number:  {type: int}
+    
+    battery:
+      type: dict
+      fields:
+        state_of_charge_pct:  {type: float, range: [0.0, 100.0]}
+        energy_content_kwh:   {type: float, unit: kWh}
+        capacity_kwh:         {type: float, unit: kWh, default: 50.0}
+        health_factor:        {type: float, range: [0.0, 1.0]} # Thermal derating metric
+        cycle_count:          {type: float}
+        temperature_c:        {type: float, unit: celsius}
+
+    solar:
+      type: dict
+      fields:
+        current_solar_output_kw: {type: float, unit: kW}
+        irradiance_wm2:          {type: float, unit: "W/m²"}
+        weather:                 {type: string, values: [clear, partial_cloud, overcast, storm]}
+
+    pricing:
+      type: dict
+      fields:
+        buy_price_per_kwh:  {type: float, unit: "USD/kWh"}
+        sell_price_per_kwh: {type: float, unit: "USD/kWh"}
+        is_peak_hour:       {type: bool}
+
+    load:
+      type: dict
+      fields:
+        total_demand_kw: {type: float, unit: kW}
+        critical_kw:     {type: float, unit: kW}
+        essential_kw:    {type: float, unit: kW}
+        deferrable_kw:   {type: float, unit: kW}
+
+    # KEY SYNC: Matches environment.py state() keys
+    net_cost_usd:        {type: float}
+    total_revenue_usd:   {type: float}
+    blackout_count:      {type: int}
+    hours_above_reserve: {type: int}
+    cumulative_reward:   {type: float}
+
+action_space:
+  type: dict
+  description: "Hybrid Discrete-Continuous Action Space"
+  actions:
+    buy_energy:    {format: "buy_energy:<kw>", range: [0.0, 20.0]}
+    sell_energy:   {format: "sell_energy:<kw>", range: [0.0, 20.0]}
+    store_energy:  {format: "store_energy:0"}
+    idle:          {format: "idle:0"}
+    load_shed:     {format: "action:shed_<tier>", tiers: [deferrable, essential, critical]}
+
+tasks:
+  - id: "task_easy"
+    description: "Generous $10 budget. Sunny day, 80% SoC. Testing basic battery buffering."
+    difficulty: "easy"
+    pass_threshold: 0.70
+    budget_usd: 10.00  # Adjusted for V2 Standby Loss
+
+  - id: "task_medium"
+    description: "Cloudy day, 50% SoC. Testing price-arbitrage timing."
+    difficulty: "medium"
+    pass_threshold: 0.65
+    budget_usd: 6.50   # Adjusted for V2 Standby Loss
+
+  - id: "task_hard"
+    description: "Storm scenario, 25% SoC. Testing critical load-shedding survival."
+    difficulty: "hard"
+    pass_threshold: 0.55
+    budget_usd: 4.50   # Adjusted for V2 Standby Loss
+
+hardware_reference:
+  mcu: "ESP32-WROOM-32"
+  adc: "ADS1115 (16-bit) for precise current sensing"
+  battery_chemistry: "LiFePO4 (LFP)"
+  location: "IIT Mandi North Campus"
+
+baseline:
+  model: "meta-llama/Llama-3.1-8B-Instruct"
+  seed: 42
+  script: "inference.py"
